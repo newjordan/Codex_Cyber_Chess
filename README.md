@@ -1,7 +1,7 @@
 # Codex Cyber Chess 0.5
 
 <p align="center">
-  <img src="assets/cyber-chess-wide.jpg" alt="Cyber Chess battle panorama" width="100%">
+ <img width="1672" height="941" alt="readme_hero_shot" src="https://github.com/user-attachments/assets/69251c15-25bc-49c3-8086-34437878199a" />
 </p>
 
 
