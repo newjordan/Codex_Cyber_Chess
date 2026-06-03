@@ -4,9 +4,6 @@
   <img src="assets/cyber-chess-wide.jpg" alt="Cyber Chess battle panorama" width="100%">
 </p>
 
-<p align="center">
-  <img src="assets/cyber-chess-poster.jpg" alt="Cyber Chess poster art" width="48%">
-</p>
 
 ## Playable Windows Build
 
