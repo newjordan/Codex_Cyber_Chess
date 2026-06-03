@@ -17,7 +17,7 @@ Cyber_Chess_0.5/Codex_Cyber_Chess_0.5.exe
 
 This is a playable `.exe` desktop build of **Cyber Chess 0.5** with the full soundtrack bundled into the app resources.
 
-<p align="center">
+
 ```text
 ⠀⠀⠀⠀⠀⠀⠀⠀⠀⣀⠤⠚⠓⠤⣀⠀⠀⠀⠀⠀⠀⠀⠀⠀
 ⠀⠀⠀⠀⠀⠀⠀⠀⡾⣅⠀⠀⠀⠀⣨⢷⠀⠀⠀⠀⠀⠀⠀⠀
@@ -34,7 +34,7 @@ This is a playable `.exe` desktop build of **Cyber Chess 0.5** with the full sou
 ⠀⠀⠀⠀⠀⠀⠀⠀⠻⣅⠀⠀⠀⠀⣨⠟⠀⠀⠀⠀⠀⠀⠀⠀
 ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠉⠲⠖⠉⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
 ```
-</p>
+
 
 
 
