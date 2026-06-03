@@ -1,0 +1,8 @@
+{
+  "name": "cyber-chess-desktop",
+  "productName": "CC V0.5",
+  "version": "0.5.0",
+  "description": "Portable desktop build of Cyber Chess.",
+  "main": "main.cjs",
+  "private": true
+}
