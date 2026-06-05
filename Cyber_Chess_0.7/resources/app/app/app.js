@@ -48901,6 +48901,16 @@ var THEME_COLORS = {
   razorblade: [1114886, 11809102, 12749368],
   gordo: [1049623, 12076968, 13208119]
 };
+var DEFAULT_CELLWAVE_DEV_CONTROLS = {
+  baseBrightness: 1.47,
+  alphaScale: 0.83,
+  audioInfluence: 1.8,
+  flowSpeed: 1.08,
+  noiseIntensity: 1.04,
+  ditherIntensity: 2.4,
+  gridIntensity: 0.54,
+  highColorBoost: 0.98
+};
 function createCellWaveEnvironment(theme) {
   const colors = THEME_COLORS[theme];
   const uniforms = {
@@ -48909,7 +48919,15 @@ function createCellWaveEnvironment(theme) {
     uMid: { value: new Color(colors[1]) },
     uHigh: { value: new Color(colors[2]) },
     uAudioLevel: { value: 0 },
-    uAudioPulse: { value: 0 }
+    uAudioPulse: { value: 0 },
+    uBaseBrightness: { value: DEFAULT_CELLWAVE_DEV_CONTROLS.baseBrightness },
+    uAlphaScale: { value: DEFAULT_CELLWAVE_DEV_CONTROLS.alphaScale },
+    uAudioInfluence: { value: DEFAULT_CELLWAVE_DEV_CONTROLS.audioInfluence },
+    uFlowSpeed: { value: DEFAULT_CELLWAVE_DEV_CONTROLS.flowSpeed },
+    uNoiseIntensity: { value: DEFAULT_CELLWAVE_DEV_CONTROLS.noiseIntensity },
+    uDitherIntensity: { value: DEFAULT_CELLWAVE_DEV_CONTROLS.ditherIntensity },
+    uGridIntensity: { value: DEFAULT_CELLWAVE_DEV_CONTROLS.gridIntensity },
+    uHighColorBoost: { value: DEFAULT_CELLWAVE_DEV_CONTROLS.highColorBoost }
   };
   const material = new ShaderMaterial({
     uniforms,
@@ -48933,6 +48951,14 @@ function createCellWaveEnvironment(theme) {
       uniform vec3 uHigh;
       uniform float uAudioLevel;
       uniform float uAudioPulse;
+      uniform float uBaseBrightness;
+      uniform float uAlphaScale;
+      uniform float uAudioInfluence;
+      uniform float uFlowSpeed;
+      uniform float uNoiseIntensity;
+      uniform float uDitherIntensity;
+      uniform float uGridIntensity;
+      uniform float uHighColorBoost;
       varying vec3 vWorld;
 
       float hash21(vec2 p) {
@@ -48987,9 +49013,9 @@ function createCellWaveEnvironment(theme) {
 
       void main() {
         vec3 dir = normalize(vWorld);
-        float audioFlow = clamp(uAudioLevel * 0.34 + uAudioPulse * 0.16, 0.0, 1.0);
-        float audioStrength = clamp(uAudioLevel * 0.28 + uAudioPulse * 0.14, 0.0, 1.0);
-        float timeFlow = uTime * (0.82 + audioFlow * 0.16);
+        float audioFlow = clamp((uAudioLevel * 0.34 + uAudioPulse * 0.16) * uAudioInfluence, 0.0, 1.0);
+        float audioStrength = clamp((uAudioLevel * 0.28 + uAudioPulse * 0.14) * uAudioInfluence, 0.0, 1.0);
+        float timeFlow = uTime * (0.82 + audioFlow * 0.16) * uFlowSpeed;
         vec3 slowDrift = vec3(timeFlow * 0.10, -timeFlow * 0.07, timeFlow * 0.06);
         vec3 crossDrift = vec3(-timeFlow * 0.12, timeFlow * 0.09, -timeFlow * 0.05);
         float n1 = vnoise3(dir * 7.5 + slowDrift);
@@ -48997,17 +49023,17 @@ function createCellWaveEnvironment(theme) {
         float n3 = vnoise3(dir * (28.0 + audioStrength * 1.1) + vec3(timeFlow * 0.04, timeFlow * 0.03, -timeFlow * 0.05));
         float waveA = sin(dot(dir, normalize(vec3(2.4, 1.1, 1.5))) * (6.4 + audioStrength * 0.28) + n1 * 1.2 + timeFlow * 0.82) * 0.5 + 0.5;
         float waveB = sin(dot(dir, normalize(vec3(-1.2, -0.7, 2.8))) * (7.2 + audioStrength * 0.22) + n2 * 1.0 - timeFlow * 0.68) * 0.5 + 0.5;
-        float speedTone = smoothstep(0.16, 0.94, n1 * 0.38 + n2 * 0.24 + n3 * 0.08 + waveA * (0.2 + audioStrength * 0.018) + waveB * (0.1 + audioStrength * 0.012));
+        float speedTone = smoothstep(0.16, 0.94, (n1 * 0.38 + n2 * 0.24 + n3 * 0.08) * uNoiseIntensity + waveA * (0.2 + audioStrength * 0.018) + waveB * (0.1 + audioStrength * 0.012));
 
         vec2 pix = floor(gl_FragCoord.xy);
         float ordered = bayer4(pix / 2.0);
         float flux = vnoise3(dir * 10.0 + vec3(timeFlow * 0.16, timeFlow * 0.11, -timeFlow * 0.09));
         float blue = hash21(pix + floor(timeFlow * (16.0 + audioFlow * 2.5)));
-        float threshold = mix(ordered, blue, 0.16 + flux * (0.2 + audioStrength * 0.025));
+        float threshold = mix(ordered, blue, (0.16 + flux * (0.2 + audioStrength * 0.025)) * uDitherIntensity);
         float dither = speedTone > threshold ? 1.0 : 0.0;
 
         vec3 gradient = mix(uBase, uMid, speedTone);
-        gradient = mix(gradient, uHigh, smoothstep(0.68, 1.0, speedTone));
+        gradient = mix(gradient, uHigh * uHighColorBoost, smoothstep(0.68, 1.0, speedTone));
         vec3 color = mix(gradient * 0.84, gradient * (1.16 + audioStrength * 0.055), dither);
 
         float grid = max(
@@ -49015,8 +49041,8 @@ function createCellWaveEnvironment(theme) {
           band(dir, vec3(0.22, -0.42, 0.88), 12.5, uTime * 0.024)
         );
         float horizonFade = smoothstep(-0.72, -0.08, dir.y) * (1.0 - smoothstep(0.65, 0.95, dir.y));
-        float alpha = (0.094 + speedTone * (0.154 + audioStrength * 0.014) + grid * (0.028 + audioStrength * 0.006)) * (0.38 + horizonFade * 0.58);
-        color *= 1.09 + audioStrength * 0.045;
+        float alpha = (0.094 + speedTone * (0.154 + audioStrength * 0.014) + grid * (0.028 + audioStrength * 0.006) * uGridIntensity) * (0.38 + horizonFade * 0.58) * uAlphaScale;
+        color *= (1.09 + audioStrength * 0.045) * uBaseBrightness;
         gl_FragColor = vec4(color, alpha);
       }
     `
@@ -49025,6 +49051,16 @@ function createCellWaveEnvironment(theme) {
   mesh.renderOrder = -20;
   return {
     mesh,
+    setDevControls(params) {
+      if (params.baseBrightness != null) uniforms.uBaseBrightness.value = MathUtils.clamp(params.baseBrightness, 0, 3);
+      if (params.alphaScale != null) uniforms.uAlphaScale.value = MathUtils.clamp(params.alphaScale, 0, 3);
+      if (params.audioInfluence != null) uniforms.uAudioInfluence.value = MathUtils.clamp(params.audioInfluence, 0, 3);
+      if (params.flowSpeed != null) uniforms.uFlowSpeed.value = MathUtils.clamp(params.flowSpeed, 0, 3);
+      if (params.noiseIntensity != null) uniforms.uNoiseIntensity.value = MathUtils.clamp(params.noiseIntensity, 0, 3);
+      if (params.ditherIntensity != null) uniforms.uDitherIntensity.value = MathUtils.clamp(params.ditherIntensity, 0, 3);
+      if (params.gridIntensity != null) uniforms.uGridIntensity.value = MathUtils.clamp(params.gridIntensity, 0, 3);
+      if (params.highColorBoost != null) uniforms.uHighColorBoost.value = MathUtils.clamp(params.highColorBoost, 0, 3);
+    },
     setAudioReactivity(level, pulse) {
       uniforms.uAudioLevel.value = MathUtils.clamp(level, 0, 1);
       uniforms.uAudioPulse.value = MathUtils.clamp(pulse, 0, 1);
@@ -49134,6 +49170,200 @@ function createAmbientCircuitLayer(theme) {
   };
 }
 
+// src/board3d/super90s.ts
+var TITLE_COLORS = [6792, 9044111, 35898, 14009344, 12910641, 39112, 7162571];
+var BUTTON_COLORS = [16722902, 16773632, 4587264];
+var FRAME_GRAY = 12171705;
+var DARK_GRAY = 4868682;
+var LIGHT_GRAY = 16777215;
+var MilkdropShader = {
+  uniforms: {
+    time: { value: 0 },
+    audioLevel: { value: 0 },
+    audioPulse: { value: 0 },
+    hueSeed: { value: 0 },
+    variant: { value: 0 }
+  },
+  vertexShader: `
+    varying vec2 vUv;
+    void main() {
+      vUv = uv;
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }
+  `,
+  fragmentShader: `
+    precision highp float;
+    uniform float time;
+    uniform float audioLevel;
+    uniform float audioPulse;
+    uniform float hueSeed;
+    uniform float variant;
+    varying vec2 vUv;
+
+    float hash(vec2 p) {
+      return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
+    }
+
+    vec3 palette(float t) {
+      vec3 a = vec3(0.55, 0.45, 0.58);
+      vec3 b = vec3(0.52, 0.53, 0.45);
+      vec3 c = vec3(1.00, 1.00, 1.00);
+      vec3 d = vec3(0.00 + hueSeed, 0.28 + hueSeed * 0.5, 0.58 + hueSeed * 0.25);
+      return a + b * cos(6.28318 * (c * t + d));
+    }
+
+    void main() {
+      vec2 uv = vUv * 2.0 - 1.0;
+      float t = time * (0.34 + variant * 0.028);
+      float pulse = audioPulse * 2.2 + audioLevel * 0.9;
+
+      float angle = atan(uv.y, uv.x);
+      float radius = length(uv);
+      float folds = 3.0 + mod(variant, 5.0);
+      float kaleido = abs(fract((angle / 6.28318) * folds + 0.5) - 0.5) * 2.0;
+      vec2 warped = vec2(cos(kaleido * 6.28318), sin(kaleido * 6.28318)) * radius;
+
+      float radial = sin(24.0 * radius - t * 8.0 + pulse * 2.0);
+      float plasma = sin((warped.x + warped.y) * (8.0 + variant) + t * 4.0);
+      float bands = sin((uv.y * 18.0) + sin(uv.x * 9.0 + t) * 4.0 - t * 5.0);
+      float rings = sin(42.0 * radius + sin(angle * folds + t) * 5.0 - t * 9.0);
+
+      float signal = radial * 0.28 + plasma * 0.25 + bands * 0.22 + rings * 0.25;
+      signal += hash(floor(vUv * vec2(96.0, 54.0)) + time) * 0.18;
+      signal += pulse * (0.16 + smoothstep(0.75, 0.05, radius) * 0.26);
+
+      vec3 color = palette(signal + radius * 0.22 + time * 0.045);
+      color.rg += vec2(0.22, -0.08) * sin(t + variant);
+      color.b += 0.24 * cos(t * 1.7 + radius * 8.0);
+
+      float scanline = 0.82 + 0.18 * step(0.5, fract(vUv.y * 120.0));
+      float dither = step(0.45, hash(floor(vUv * vec2(160.0, 90.0)) + variant)) * 0.08;
+      float vignette = smoothstep(1.2, 0.18, radius);
+      color = (color + dither) * scanline * (0.58 + vignette * 0.52 + pulse * 0.16);
+
+      gl_FragColor = vec4(color, 1.0);
+    }
+  `
+};
+function createBox(width, height, depth, color, x, y, z) {
+  const mesh = new Mesh(
+    new BoxGeometry(width, height, depth),
+    new MeshBasicMaterial({ color })
+  );
+  mesh.position.set(x, y, z);
+  return mesh;
+}
+function createWindowFrame(index) {
+  const group = new Group();
+  const width = 5.8 + index % 3 * 0.55;
+  const height = 3.7 + index % 2 * 0.4;
+  const depth = 0.1;
+  const titleHeight = 0.45;
+  const border = 0.16;
+  const back = createBox(width, height, depth, FRAME_GRAY, 0, 0, -0.04);
+  group.add(back);
+  const title = createBox(width - border * 2, titleHeight, depth + 0.025, TITLE_COLORS[index % TITLE_COLORS.length], 0, height / 2 - titleHeight / 2 - border, 0.04);
+  group.add(title);
+  const contentWidth = width - border * 2.4;
+  const contentHeight = height - titleHeight - border * 3.1;
+  const visual = new Mesh(
+    new PlaneGeometry(contentWidth, contentHeight),
+    new ShaderMaterial({
+      ...MilkdropShader,
+      uniforms: UniformsUtils.clone(MilkdropShader.uniforms),
+      side: DoubleSide
+    })
+  );
+  visual.position.set(0, -height / 2 + border + contentHeight / 2, 0.12);
+  group.add(visual);
+  group.add(createBox(width, border, depth + 0.05, LIGHT_GRAY, 0, height / 2 - border / 2, 0.08));
+  group.add(createBox(border, height, depth + 0.05, LIGHT_GRAY, -width / 2 + border / 2, 0, 0.08));
+  group.add(createBox(width, border, depth + 0.05, DARK_GRAY, 0, -height / 2 + border / 2, 0.09));
+  group.add(createBox(border, height, depth + 0.05, DARK_GRAY, width / 2 - border / 2, 0, 0.09));
+  for (let i = 0; i < 3; i += 1) {
+    const button = createBox(0.22, 0.22, depth + 0.06, BUTTON_COLORS[i], width / 2 - 0.42 - i * 0.32, height / 2 - titleHeight / 2 - border, 0.13);
+    group.add(button);
+  }
+  const insetLineMat = new LineBasicMaterial({ color: 2105376, transparent: true, opacity: 0.75 });
+  const points = [
+    new Vector3(-contentWidth / 2, -height / 2 + border, 0.135),
+    new Vector3(contentWidth / 2, -height / 2 + border, 0.135),
+    new Vector3(contentWidth / 2, -height / 2 + border + contentHeight, 0.135),
+    new Vector3(-contentWidth / 2, -height / 2 + border + contentHeight, 0.135),
+    new Vector3(-contentWidth / 2, -height / 2 + border, 0.135)
+  ];
+  group.add(new Line(new BufferGeometry().setFromPoints(points), insetLineMat));
+  const shaderMaterial = visual.material;
+  shaderMaterial.uniforms.hueSeed.value = index * 0.137;
+  shaderMaterial.uniforms.variant.value = index;
+  return { group, visual: shaderMaterial };
+}
+function createSuper90sEnvironment(playerColor) {
+  const group = new Group();
+  group.name = "super-90s-windows";
+  const behind = playerColor === "w" ? 1 : -1;
+  const placements = [
+    [-8.2, 5.2, behind * 10.2, 0.18],
+    [7.8, 4.5, behind * 9.3, -0.2],
+    [-11.4, 2.7, behind * 3.3, 0.55],
+    [11.3, 3, behind * 2.4, -0.58],
+    [-5.2, 8, behind * 13.5, 0.08],
+    [5.5, 7.4, behind * 12.6, -0.1],
+    [0, 6.7, behind * 16.4, 0]
+  ];
+  const windows = placements.map(([x, y, z, yaw], index) => {
+    const { group: root, visual } = createWindowFrame(index);
+    root.position.set(x, y, z);
+    root.rotation.set(-0.08 + index % 2 * 0.08, yaw + (playerColor === "w" ? Math.PI : 0), -0.04 + index * 0.018);
+    root.scale.setScalar(0.92 + index % 3 * 0.08);
+    group.add(root);
+    return {
+      root,
+      visual,
+      basePosition: root.position.clone(),
+      driftSeed: index * 1.91 + 0.6,
+      orbitRadius: 0.18 + index * 0.035,
+      spinSpeed: 0.12 + index * 0.018,
+      pulseScale: 1.04 + index * 0.025
+    };
+  });
+  let elapsed = 0;
+  return {
+    group,
+    tick(delta, audioLevel, audioPulse) {
+      elapsed += delta;
+      const level = Math.max(0, Math.min(1, audioLevel || 0));
+      const pulse = Math.max(0, Math.min(1, audioPulse || 0));
+      windows.forEach((entry, index) => {
+        const phase = elapsed * entry.spinSpeed + entry.driftSeed;
+        entry.root.position.set(
+          entry.basePosition.x + Math.sin(phase * 1.7) * entry.orbitRadius,
+          entry.basePosition.y + Math.sin(phase * 1.1) * (0.24 + level * 0.38),
+          entry.basePosition.z + Math.cos(phase * 1.3) * entry.orbitRadius
+        );
+        entry.root.rotation.y += delta * (0.035 + level * 0.08) * (index % 2 === 0 ? 1 : -1);
+        entry.root.rotation.z = Math.sin(phase) * 0.09;
+        const scale = entry.pulseScale + level * 0.08 + pulse * 0.14;
+        entry.root.scale.setScalar(scale);
+        entry.visual.uniforms.time.value = elapsed;
+        entry.visual.uniforms.audioLevel.value = level;
+        entry.visual.uniforms.audioPulse.value = pulse;
+      });
+    },
+    dispose() {
+      group.traverse((child) => {
+        const disposable = child;
+        disposable.geometry?.dispose();
+        if (disposable.material) {
+          const materials = Array.isArray(disposable.material) ? disposable.material : [disposable.material];
+          materials.forEach((material) => material.dispose());
+        }
+      });
+      group.clear();
+    }
+  };
+}
+
 // src/board3d/scene.ts
 var DotMatrixShader = {
   uniforms: {
@@ -49160,7 +49390,7 @@ var DotMatrixShader = {
     }
   `
 };
-function setupScene(canvas, enemyTheme = "goop", playerColor = "w") {
+function setupScene(canvas, enemyTheme = "goop", playerColor = "w", super90sEnabled = false) {
   const scene = new Scene();
   scene.fog = new FogExp2(1296, 0.015);
   const w = canvas.clientWidth || 800;
@@ -49203,8 +49433,35 @@ function setupScene(canvas, enemyTheme = "goop", playerColor = "w") {
   scene.add(new Points(starsGeo, new PointsMaterial({ size: 0.08, color: 6728447, transparent: true, opacity: 0.4 })));
   const cellWaveEnvironment = createCellWaveEnvironment(enemyTheme);
   scene.add(cellWaveEnvironment.mesh);
+  const chessGlobal = window.__chess;
+  const applyCellWaveDevControls = (params) => {
+    cellWaveEnvironment.setDevControls(params);
+    if (chessGlobal) {
+      chessGlobal.cellWaveDevControls = {
+        ...chessGlobal.cellWaveDevControls ?? {},
+        ...params
+      };
+    }
+  };
+  if (chessGlobal) {
+    chessGlobal.cellWaveDev = {
+      defaults: { ...DEFAULT_CELLWAVE_DEV_CONTROLS },
+      setParams: applyCellWaveDevControls,
+      reset() {
+        applyCellWaveDevControls(DEFAULT_CELLWAVE_DEV_CONTROLS);
+      }
+    };
+    cellWaveEnvironment.setDevControls(chessGlobal.cellWaveDevControls ?? DEFAULT_CELLWAVE_DEV_CONTROLS);
+  }
   const ambientCircuitLayer = createAmbientCircuitLayer(enemyTheme);
   scene.add(ambientCircuitLayer.group);
+  const super90sEnvironment = super90sEnabled ? createSuper90sEnvironment(playerColor) : null;
+  const super90sStatus = {
+    enabled: Boolean(super90sEnvironment),
+    windows: super90sEnvironment?.group.children.length ?? 0
+  };
+  if (chessGlobal) chessGlobal.super90s = super90sStatus;
+  if (super90sEnvironment) scene.add(super90sEnvironment.group);
   const clock = new Clock();
   const ro = new ResizeObserver(() => {
     const rw = canvas.clientWidth;
@@ -49226,15 +49483,22 @@ function setupScene(canvas, enemyTheme = "goop", playerColor = "w") {
     tick() {
       const delta = clock.getDelta();
       const audioReactive = window.__chess?.audioReactive;
+      if (chessGlobal?.cellWaveDevControls) {
+        cellWaveEnvironment.setDevControls(chessGlobal.cellWaveDevControls);
+      }
       cellWaveEnvironment.setAudioReactivity(audioReactive?.level ?? 0, audioReactive?.pulse ?? 0);
       cellWaveEnvironment.tick(delta);
       ambientCircuitLayer.tick(delta);
+      super90sEnvironment?.tick(delta, audioReactive?.level ?? 0, audioReactive?.pulse ?? 0);
     },
     dispose() {
       ro.disconnect();
       controls.dispose();
       cellWaveEnvironment.dispose();
+      if (chessGlobal?.cellWaveDev?.setParams === applyCellWaveDevControls) delete chessGlobal.cellWaveDev;
       ambientCircuitLayer.dispose();
+      super90sEnvironment?.dispose();
+      if (chessGlobal?.super90s === super90sStatus) delete chessGlobal.super90s;
       composer.renderTarget1.dispose();
       composer.renderTarget2.dispose();
       renderer.dispose();
@@ -57624,7 +57888,7 @@ function animateJump(instance, toSquare, effectsGroup, onComplete) {
 
 // src/board3d/useBoard3D.ts
 var START_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
-function useBoard3D(whiteName, blackName, onGameStateChange, inputEnabled = true, enemyTheme = "goop", playerColor = "w", onMoveStart) {
+function useBoard3D(whiteName, blackName, onGameStateChange, inputEnabled = true, enemyTheme = "goop", playerColor = "w", onMoveStart, super90sEnabled = false) {
   const canvasRef = (0, import_react.useRef)(null);
   const gameStateCallbackRef = (0, import_react.useRef)(onGameStateChange);
   const inputEnabledRef = (0, import_react.useRef)(inputEnabled);
@@ -57645,7 +57909,7 @@ function useBoard3D(whiteName, blackName, onGameStateChange, inputEnabled = true
   (0, import_react.useEffect)(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    const ctx = setupScene(canvas, enemyTheme, playerColor);
+    const ctx = setupScene(canvas, enemyTheme, playerColor, super90sEnabled);
     const { boardGroup } = createBoard(ctx.scene, whiteName, blackName);
     const piecesContainer = new Group();
     ctx.scene.add(piecesContainer);
@@ -58227,8 +58491,8 @@ function useBoard3D(whiteName, blackName, onGameStateChange, inputEnabled = true
 // src/Board3DScene.tsx
 var import_jsx_runtime = __toESM(require_jsx_runtime(), 1);
 var Board3DScene = (0, import_react2.forwardRef)(
-  ({ whiteName = "White AI", blackName = "Black AI", inputEnabled = true, enemyTheme = "goop", playerColor = "w", onGameStateChange, onMoveStart }, ref) => {
-    const { canvasRef, handleRef } = useBoard3D(whiteName, blackName, onGameStateChange, inputEnabled, enemyTheme, playerColor, onMoveStart);
+  ({ whiteName = "White AI", blackName = "Black AI", inputEnabled = true, enemyTheme = "goop", playerColor = "w", super90sEnabled = false, onGameStateChange, onMoveStart }, ref) => {
+    const { canvasRef, handleRef } = useBoard3D(whiteName, blackName, onGameStateChange, inputEnabled, enemyTheme, playerColor, onMoveStart, super90sEnabled);
     (0, import_react2.useImperativeHandle)(ref, () => ({
       applyMove: (...args) => handleRef.current.applyMove(...args),
       resetToPosition: (fen) => handleRef.current.resetToPosition(fen),
@@ -58406,7 +58670,18 @@ var LEADERBOARD_KEY = "cyberChessLeaderboardV1";
 var AUDIO_MODE_KEY = "cyberChessAudioMode";
 var AUDIO_VOLUME_KEY = "cyberChessAudioVolume";
 var SAVE_GAME_KEY = "cyberChessSaveGameV1";
+var SUPER_90S_KEY = "cyberChessSuper90s";
 var MAX_LEADERBOARD = 8;
+var CELLWAVE_DEV_CONTROL_DEFS = [
+  { key: "baseBrightness", label: "Brightness", min: 0, max: 2, step: 0.01 },
+  { key: "alphaScale", label: "Alpha", min: 0, max: 2, step: 0.01 },
+  { key: "audioInfluence", label: "Audio", min: 0, max: 2.5, step: 0.01 },
+  { key: "flowSpeed", label: "Flow", min: 0, max: 2.5, step: 0.01 },
+  { key: "noiseIntensity", label: "Noise", min: 0, max: 2.5, step: 0.01 },
+  { key: "ditherIntensity", label: "Dither", min: 0, max: 2.5, step: 0.01 },
+  { key: "gridIntensity", label: "Grid", min: 0, max: 2.5, step: 0.01 },
+  { key: "highColorBoost", label: "High Color", min: 0, max: 2.5, step: 0.01 }
+];
 var OPPONENTS = [
   {
     id: "goop",
@@ -58509,7 +58784,6 @@ var SOUNDTRACK_SOURCES = [
   "media/audio/drummin_pawns.mp3",
   "media/audio/cybercrimes.mp3",
   "media/audio/The_Pulse_of_the_Board_2.mp3",
-  "media/audio/Pawns_of_Destiny.mp3",
   "media/audio/checkmeat_freakazoid.mp3",
   "media/audio/checkmeat_you_lose_song.mp3",
   "media/audio/victorious_1.mp3",
@@ -58808,6 +59082,13 @@ function readStoredAudioVolume() {
     return 100;
   }
 }
+function readStoredSuper90s() {
+  try {
+    return window.localStorage.getItem(SUPER_90S_KEY) === "1";
+  } catch (_) {
+    return false;
+  }
+}
 function readLeaderboard() {
   try {
     const parsed = JSON.parse(window.localStorage.getItem(LEADERBOARD_KEY) || "[]");
@@ -58816,6 +59097,19 @@ function readLeaderboard() {
   } catch (_) {
     return [];
   }
+}
+function isCellWaveDevControlAvailable() {
+  try {
+    const params = new URLSearchParams(window.location.search);
+    return params.has("cellwaveDev") || window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1";
+  } catch (_) {
+    return false;
+  }
+}
+function clampCellWaveControl(key, value) {
+  const control = CELLWAVE_DEV_CONTROL_DEFS.find((item) => item.key === key);
+  if (!control || !Number.isFinite(value)) return DEFAULT_CELLWAVE_DEV_CONTROLS[key];
+  return Math.max(control.min, Math.min(control.max, value));
 }
 function getOpponentById(id) {
   return OPPONENTS.find((opponent) => opponent.id === id) ?? OPPONENTS[0];
@@ -58968,8 +59262,10 @@ function App() {
   const lastAnnouncedRef = (0, import_react3.useRef)("");
   const audioModeRef = (0, import_react3.useRef)(readStoredAudioMode());
   const audioVolumeRef = (0, import_react3.useRef)(readStoredAudioVolume());
+  const super90sRef = (0, import_react3.useRef)(readStoredSuper90s());
   const previousFenRef = (0, import_react3.useRef)(START);
   const previousContinueSecondsRef = (0, import_react3.useRef)(CONTINUE_SECONDS);
+  const lastCornerTapRef = (0, import_react3.useRef)(0);
   const [screen, setScreen] = (0, import_react3.useState)("intro");
   const [menuStep, setMenuStep] = (0, import_react3.useState)("video");
   const [storyIndex, setStoryIndex] = (0, import_react3.useState)(0);
@@ -58981,6 +59277,7 @@ function App() {
   const [settingsOpen, setSettingsOpen] = (0, import_react3.useState)(false);
   const [audioMode, setAudioMode] = (0, import_react3.useState)(audioModeRef.current);
   const [audioVolume, setAudioVolume] = (0, import_react3.useState)(audioVolumeRef.current);
+  const [super90s, setSuper90s] = (0, import_react3.useState)(super90sRef.current);
   const [soundtrackIndex, setSoundtrackIndex] = (0, import_react3.useState)(loadingMusicIndexRef.current);
   const [introVideoReady, setIntroVideoReady] = (0, import_react3.useState)(false);
   const [introVideoStarted, setIntroVideoStarted] = (0, import_react3.useState)(false);
@@ -58990,6 +59287,9 @@ function App() {
   const [resultState, setResultState] = (0, import_react3.useState)(null);
   const [settingsNotice, setSettingsNotice] = (0, import_react3.useState)("");
   const [creditsOpen, setCreditsOpen] = (0, import_react3.useState)(false);
+  const [cellWaveDevEnabled] = (0, import_react3.useState)(isCellWaveDevControlAvailable);
+  const [cellWaveDevOpen, setCellWaveDevOpen] = (0, import_react3.useState)(false);
+  const [cellWaveDevControls, setCellWaveDevControls] = (0, import_react3.useState)({ ...DEFAULT_CELLWAVE_DEV_CONTROLS });
   const [gameState, setGameState] = (0, import_react3.useState)({
     status: "Loading pieces",
     fen: START,
@@ -59010,6 +59310,15 @@ function App() {
   const enemyAvatarSrc = fightHud.enemyMood === "damaged" ? selected.avatarStates.damaged : fightHud.enemyMood === "dominating" ? selected.avatarStates.dominating : selected.avatar;
   const soundtrackTitle = getSoundtrackTitle(SOUNDTRACK_SOURCES[soundtrackIndex]);
   const musicControlsDisabled = audioMode !== "full";
+  const updateSuper90s = (enabled) => {
+    super90sRef.current = enabled;
+    setSuper90s(enabled);
+    try {
+      window.localStorage.setItem(SUPER_90S_KEY, enabled ? "1" : "0");
+    } catch (_) {
+    }
+    ensureAudioEngine()?.play(enabled ? "reveal" : "tick");
+  };
   const updateGameState = (state) => {
     window.__chess.state = state;
     if (turnFromFen(state.fen) !== aiColor) {
@@ -59017,6 +59326,25 @@ function App() {
       setThinking(false);
     }
     setGameState(state);
+  };
+  const pushCellWaveDevControls = (next) => {
+    window.__chess.cellWaveDevControls = next;
+    window.__chess.cellWaveDev?.setParams?.(next);
+  };
+  const updateCellWaveDevControl = (key, value) => {
+    setCellWaveDevControls((current) => {
+      const next = {
+        ...current,
+        [key]: clampCellWaveControl(key, value)
+      };
+      pushCellWaveDevControls(next);
+      return next;
+    });
+  };
+  const resetCellWaveDevControls = () => {
+    const next = { ...DEFAULT_CELLWAVE_DEV_CONTROLS };
+    setCellWaveDevControls(next);
+    pushCellWaveDevControls(next);
   };
   const buildResultForFen = (fen) => {
     const game = new Chess(fen);
@@ -59073,6 +59401,7 @@ function App() {
     window.__chess.handle = ref.current;
     window.__chess.mounted = true;
     window.__chess.state = gameState;
+    if (cellWaveDevEnabled) window.__chess.cellWaveDevControls = cellWaveDevControls;
     document.body.setAttribute("data-chess-mounted", "1");
     const id = window.setTimeout(() => {
       try {
@@ -59082,6 +59411,10 @@ function App() {
     }, 400);
     return () => window.clearTimeout(id);
   }, []);
+  (0, import_react3.useEffect)(() => {
+    if (!cellWaveDevEnabled) return;
+    pushCellWaveDevControls(cellWaveDevControls);
+  }, [cellWaveDevEnabled]);
   (0, import_react3.useEffect)(() => () => {
     introMusicRef.current?.stop();
     introMusicRef.current = null;
@@ -59104,8 +59437,17 @@ function App() {
   }, []);
   (0, import_react3.useEffect)(() => {
     const onKeyDown2 = (event) => {
+      if (cellWaveDevEnabled && event.ctrlKey && event.shiftKey && event.key.toLowerCase() === "w") {
+        event.preventDefault();
+        setCellWaveDevOpen((open) => !open);
+        return;
+      }
       if (event.key === "Escape") {
         event.preventDefault();
+        if (cellWaveDevOpen) {
+          setCellWaveDevOpen(false);
+          return;
+        }
         if (settingsOpen) {
           audioRef.current?.play("menu");
           if (creditsOpen) {
@@ -59132,7 +59474,7 @@ function App() {
     };
     window.addEventListener("keydown", onKeyDown2);
     return () => window.removeEventListener("keydown", onKeyDown2);
-  }, [creditsOpen, settingsOpen]);
+  }, [cellWaveDevEnabled, cellWaveDevOpen, creditsOpen, settingsOpen]);
   (0, import_react3.useEffect)(() => {
     const previousFen = previousFenRef.current;
     if (previousFen !== gameState.fen) {
@@ -59268,6 +59610,7 @@ function App() {
       leaderboard,
       audioMode,
       audioVolume,
+      super90s,
       settingsOpen,
       audioReady: Boolean(audioRef.current),
       soundtrackIndex,
@@ -59299,7 +59642,7 @@ function App() {
       audioRef.current?.play(forcedResult.kind === "game-over" ? "loss" : "tick");
       setScreen("result");
     };
-  }, [audioMode, audioVolume, blackName, continueSeconds, leaderboard, lives, nextOpponent, playerName, resultState, screen, selected, selectedId, settingsOpen, soundtrackIndex, whiteName]);
+  }, [audioMode, audioVolume, blackName, continueSeconds, leaderboard, lives, nextOpponent, playerName, resultState, screen, selected, selectedId, settingsOpen, soundtrackIndex, super90s, whiteName]);
   (0, import_react3.useEffect)(() => {
     if (screen === "intro" && menuStep === "profile") setPlayerNameInput("");
   }, [menuStep, screen]);
@@ -59921,6 +60264,18 @@ function App() {
   };
   const resultPresentation = resultState ? getResultPresentation(resultState, playerName) : null;
   const resultBackdrop = resultState ? getResultBackdrop(resultState) : "";
+  const minimizeDesktopWindow = () => {
+    window.cyberChessDesktop?.minimize().catch(() => void 0);
+  };
+  const handleCornerTap = () => {
+    const now = Date.now();
+    if (now - lastCornerTapRef.current <= 420) {
+      lastCornerTapRef.current = 0;
+      minimizeDesktopWindow();
+      return;
+    }
+    lastCornerTapRef.current = now;
+  };
   return /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(import_jsx_runtime2.Fragment, { children: [
     /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
       Board3DScene,
@@ -59931,15 +60286,25 @@ function App() {
         inputEnabled,
         enemyTheme: selected.theme,
         playerColor,
+        super90sEnabled: super90s,
         onGameStateChange: updateGameState,
         onMoveStart: () => {
           playClip(PIECE_SLIDE_SFX_SRC);
         }
       },
-      `${selected.id}-${playerColor}-${playerName}`
+      `${selected.id}-${playerColor}-${playerName}-${super90s ? "super90s" : "standard"}`
     ),
     window.cyberChessDesktop && /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(import_jsx_runtime2.Fragment, { children: [
-      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { className: "electron-drag-tag", "aria-hidden": "true", title: "Drag window" }),
+      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { className: "electron-drag-tag", title: "Drag window", children: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+        "button",
+        {
+          type: "button",
+          className: "electron-corner-minimize",
+          "aria-label": "Minimize Cyber Chess",
+          onClick: handleCornerTap,
+          onDoubleClick: minimizeDesktopWindow
+        }
+      ) }),
       /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
         "button",
         {
@@ -60178,6 +60543,55 @@ function App() {
         ] })
       ] })
     ] }),
+    cellWaveDevEnabled && /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(import_jsx_runtime2.Fragment, { children: [
+      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+        "button",
+        {
+          type: "button",
+          className: "cellwave-dev-tab" + (cellWaveDevOpen ? " open" : ""),
+          "aria-expanded": cellWaveDevOpen,
+          "aria-controls": "cellwave-dev-panel",
+          onClick: () => setCellWaveDevOpen((open) => !open),
+          children: "CELLWAVE DEV"
+        }
+      ),
+      cellWaveDevOpen && /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { className: "cellwave-dev-panel", id: "cellwave-dev-panel", role: "dialog", "aria-label": "Cellwave dev controls", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { className: "cellwave-dev-head", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { children: [
+            /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { children: "EXPERIMENTAL" }),
+            /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("strong", { children: "Cellwave Backdrop" })
+          ] }),
+          /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("button", { type: "button", "aria-label": "Close cellwave dev controls", onClick: () => setCellWaveDevOpen(false), children: "X" })
+        ] }),
+        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { className: "cellwave-dev-body", children: CELLWAVE_DEV_CONTROL_DEFS.map((control) => {
+          const value = cellWaveDevControls[control.key];
+          const progress = (value - control.min) / (control.max - control.min) * 100;
+          return /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("label", { className: "cellwave-dev-control", htmlFor: `cellwave-dev-${control.key}`, children: [
+            /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("span", { children: [
+              /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("b", { children: control.label }),
+              /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("code", { children: value.toFixed(2) })
+            ] }),
+            /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+              "input",
+              {
+                id: `cellwave-dev-${control.key}`,
+                type: "range",
+                min: control.min,
+                max: control.max,
+                step: control.step,
+                value,
+                style: { "--cellwave-dev-progress": `${progress}%` },
+                onChange: (event) => updateCellWaveDevControl(control.key, Number(event.currentTarget.value))
+              }
+            )
+          ] }, control.key);
+        }) }),
+        /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { className: "cellwave-dev-actions", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("button", { type: "button", onClick: resetCellWaveDevControls, children: "RESET" }),
+          /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { children: "Ctrl+Shift+W" })
+        ] })
+      ] })
+    ] }),
     settingsOpen && /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { className: "settings-screen", role: "dialog", "aria-modal": "true", "aria-labelledby": "settings-title", children: [
       /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("img", { className: "settings-bg", src: SETTINGS_BG_SRC, alt: "" }),
       /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { className: "settings-vignette" }),
@@ -60232,6 +60646,22 @@ function App() {
                 )
               }
             )
+          ] }),
+          /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { className: "settings-group settings-visual-group", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("strong", { children: "VISUALS" }),
+            /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { className: "settings-options settings-options-visual", role: "group", "aria-label": "Visual effects", children: /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(
+              "button",
+              {
+                type: "button",
+                className: "settings-toggle settings-visual-toggle" + (super90s ? " selected" : ""),
+                "aria-pressed": super90s,
+                onClick: () => updateSuper90s(!super90s),
+                children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { className: "settings-toggle-switch", "aria-hidden": "true" }),
+                  /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { className: "settings-toggle-label", children: "SUPER 90S" })
+                ]
+              }
+            ) })
           ] }),
           /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { className: "settings-group settings-playlist", children: [
             /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("strong", { children: "SOUNDTRACK" }),
