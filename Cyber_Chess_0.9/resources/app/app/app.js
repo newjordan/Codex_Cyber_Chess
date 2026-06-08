@@ -49170,200 +49170,6 @@ function createAmbientCircuitLayer(theme) {
   };
 }
 
-// src/board3d/super90s.ts
-var TITLE_COLORS = [6792, 9044111, 35898, 14009344, 12910641, 39112, 7162571];
-var BUTTON_COLORS = [16722902, 16773632, 4587264];
-var FRAME_GRAY = 12171705;
-var DARK_GRAY = 4868682;
-var LIGHT_GRAY = 16777215;
-var MilkdropShader = {
-  uniforms: {
-    time: { value: 0 },
-    audioLevel: { value: 0 },
-    audioPulse: { value: 0 },
-    hueSeed: { value: 0 },
-    variant: { value: 0 }
-  },
-  vertexShader: `
-    varying vec2 vUv;
-    void main() {
-      vUv = uv;
-      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-    }
-  `,
-  fragmentShader: `
-    precision highp float;
-    uniform float time;
-    uniform float audioLevel;
-    uniform float audioPulse;
-    uniform float hueSeed;
-    uniform float variant;
-    varying vec2 vUv;
-
-    float hash(vec2 p) {
-      return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
-    }
-
-    vec3 palette(float t) {
-      vec3 a = vec3(0.55, 0.45, 0.58);
-      vec3 b = vec3(0.52, 0.53, 0.45);
-      vec3 c = vec3(1.00, 1.00, 1.00);
-      vec3 d = vec3(0.00 + hueSeed, 0.28 + hueSeed * 0.5, 0.58 + hueSeed * 0.25);
-      return a + b * cos(6.28318 * (c * t + d));
-    }
-
-    void main() {
-      vec2 uv = vUv * 2.0 - 1.0;
-      float t = time * (0.34 + variant * 0.028);
-      float pulse = audioPulse * 2.2 + audioLevel * 0.9;
-
-      float angle = atan(uv.y, uv.x);
-      float radius = length(uv);
-      float folds = 3.0 + mod(variant, 5.0);
-      float kaleido = abs(fract((angle / 6.28318) * folds + 0.5) - 0.5) * 2.0;
-      vec2 warped = vec2(cos(kaleido * 6.28318), sin(kaleido * 6.28318)) * radius;
-
-      float radial = sin(24.0 * radius - t * 8.0 + pulse * 2.0);
-      float plasma = sin((warped.x + warped.y) * (8.0 + variant) + t * 4.0);
-      float bands = sin((uv.y * 18.0) + sin(uv.x * 9.0 + t) * 4.0 - t * 5.0);
-      float rings = sin(42.0 * radius + sin(angle * folds + t) * 5.0 - t * 9.0);
-
-      float signal = radial * 0.28 + plasma * 0.25 + bands * 0.22 + rings * 0.25;
-      signal += hash(floor(vUv * vec2(96.0, 54.0)) + time) * 0.18;
-      signal += pulse * (0.16 + smoothstep(0.75, 0.05, radius) * 0.26);
-
-      vec3 color = palette(signal + radius * 0.22 + time * 0.045);
-      color.rg += vec2(0.22, -0.08) * sin(t + variant);
-      color.b += 0.24 * cos(t * 1.7 + radius * 8.0);
-
-      float scanline = 0.82 + 0.18 * step(0.5, fract(vUv.y * 120.0));
-      float dither = step(0.45, hash(floor(vUv * vec2(160.0, 90.0)) + variant)) * 0.08;
-      float vignette = smoothstep(1.2, 0.18, radius);
-      color = (color + dither) * scanline * (0.58 + vignette * 0.52 + pulse * 0.16);
-
-      gl_FragColor = vec4(color, 1.0);
-    }
-  `
-};
-function createBox(width, height, depth, color, x, y, z) {
-  const mesh = new Mesh(
-    new BoxGeometry(width, height, depth),
-    new MeshBasicMaterial({ color })
-  );
-  mesh.position.set(x, y, z);
-  return mesh;
-}
-function createWindowFrame(index) {
-  const group = new Group();
-  const width = 5.8 + index % 3 * 0.55;
-  const height = 3.7 + index % 2 * 0.4;
-  const depth = 0.1;
-  const titleHeight = 0.45;
-  const border = 0.16;
-  const back = createBox(width, height, depth, FRAME_GRAY, 0, 0, -0.04);
-  group.add(back);
-  const title = createBox(width - border * 2, titleHeight, depth + 0.025, TITLE_COLORS[index % TITLE_COLORS.length], 0, height / 2 - titleHeight / 2 - border, 0.04);
-  group.add(title);
-  const contentWidth = width - border * 2.4;
-  const contentHeight = height - titleHeight - border * 3.1;
-  const visual = new Mesh(
-    new PlaneGeometry(contentWidth, contentHeight),
-    new ShaderMaterial({
-      ...MilkdropShader,
-      uniforms: UniformsUtils.clone(MilkdropShader.uniforms),
-      side: DoubleSide
-    })
-  );
-  visual.position.set(0, -height / 2 + border + contentHeight / 2, 0.12);
-  group.add(visual);
-  group.add(createBox(width, border, depth + 0.05, LIGHT_GRAY, 0, height / 2 - border / 2, 0.08));
-  group.add(createBox(border, height, depth + 0.05, LIGHT_GRAY, -width / 2 + border / 2, 0, 0.08));
-  group.add(createBox(width, border, depth + 0.05, DARK_GRAY, 0, -height / 2 + border / 2, 0.09));
-  group.add(createBox(border, height, depth + 0.05, DARK_GRAY, width / 2 - border / 2, 0, 0.09));
-  for (let i = 0; i < 3; i += 1) {
-    const button = createBox(0.22, 0.22, depth + 0.06, BUTTON_COLORS[i], width / 2 - 0.42 - i * 0.32, height / 2 - titleHeight / 2 - border, 0.13);
-    group.add(button);
-  }
-  const insetLineMat = new LineBasicMaterial({ color: 2105376, transparent: true, opacity: 0.75 });
-  const points = [
-    new Vector3(-contentWidth / 2, -height / 2 + border, 0.135),
-    new Vector3(contentWidth / 2, -height / 2 + border, 0.135),
-    new Vector3(contentWidth / 2, -height / 2 + border + contentHeight, 0.135),
-    new Vector3(-contentWidth / 2, -height / 2 + border + contentHeight, 0.135),
-    new Vector3(-contentWidth / 2, -height / 2 + border, 0.135)
-  ];
-  group.add(new Line(new BufferGeometry().setFromPoints(points), insetLineMat));
-  const shaderMaterial = visual.material;
-  shaderMaterial.uniforms.hueSeed.value = index * 0.137;
-  shaderMaterial.uniforms.variant.value = index;
-  return { group, visual: shaderMaterial };
-}
-function createSuper90sEnvironment(playerColor) {
-  const group = new Group();
-  group.name = "super-90s-windows";
-  const behind = playerColor === "w" ? 1 : -1;
-  const placements = [
-    [-8.2, 5.2, behind * 10.2, 0.18],
-    [7.8, 4.5, behind * 9.3, -0.2],
-    [-11.4, 2.7, behind * 3.3, 0.55],
-    [11.3, 3, behind * 2.4, -0.58],
-    [-5.2, 8, behind * 13.5, 0.08],
-    [5.5, 7.4, behind * 12.6, -0.1],
-    [0, 6.7, behind * 16.4, 0]
-  ];
-  const windows = placements.map(([x, y, z, yaw], index) => {
-    const { group: root, visual } = createWindowFrame(index);
-    root.position.set(x, y, z);
-    root.rotation.set(-0.08 + index % 2 * 0.08, yaw + (playerColor === "w" ? Math.PI : 0), -0.04 + index * 0.018);
-    root.scale.setScalar(0.92 + index % 3 * 0.08);
-    group.add(root);
-    return {
-      root,
-      visual,
-      basePosition: root.position.clone(),
-      driftSeed: index * 1.91 + 0.6,
-      orbitRadius: 0.18 + index * 0.035,
-      spinSpeed: 0.12 + index * 0.018,
-      pulseScale: 1.04 + index * 0.025
-    };
-  });
-  let elapsed = 0;
-  return {
-    group,
-    tick(delta, audioLevel, audioPulse) {
-      elapsed += delta;
-      const level = Math.max(0, Math.min(1, audioLevel || 0));
-      const pulse = Math.max(0, Math.min(1, audioPulse || 0));
-      windows.forEach((entry, index) => {
-        const phase = elapsed * entry.spinSpeed + entry.driftSeed;
-        entry.root.position.set(
-          entry.basePosition.x + Math.sin(phase * 1.7) * entry.orbitRadius,
-          entry.basePosition.y + Math.sin(phase * 1.1) * (0.24 + level * 0.38),
-          entry.basePosition.z + Math.cos(phase * 1.3) * entry.orbitRadius
-        );
-        entry.root.rotation.y += delta * (0.035 + level * 0.08) * (index % 2 === 0 ? 1 : -1);
-        entry.root.rotation.z = Math.sin(phase) * 0.09;
-        const scale = entry.pulseScale + level * 0.08 + pulse * 0.14;
-        entry.root.scale.setScalar(scale);
-        entry.visual.uniforms.time.value = elapsed;
-        entry.visual.uniforms.audioLevel.value = level;
-        entry.visual.uniforms.audioPulse.value = pulse;
-      });
-    },
-    dispose() {
-      group.traverse((child) => {
-        const disposable = child;
-        disposable.geometry?.dispose();
-        if (disposable.material) {
-          const materials = Array.isArray(disposable.material) ? disposable.material : [disposable.material];
-          materials.forEach((material) => material.dispose());
-        }
-      });
-      group.clear();
-    }
-  };
-}
-
 // src/board3d/scene.ts
 var DotMatrixShader = {
   uniforms: {
@@ -49390,7 +49196,7 @@ var DotMatrixShader = {
     }
   `
 };
-function setupScene(canvas, enemyTheme = "goop", playerColor = "w", super90sEnabled = false) {
+function setupScene(canvas, enemyTheme = "goop", playerColor = "w") {
   const scene = new Scene();
   scene.fog = new FogExp2(1296, 0.015);
   const w = canvas.clientWidth || 800;
@@ -49455,13 +49261,6 @@ function setupScene(canvas, enemyTheme = "goop", playerColor = "w", super90sEnab
   }
   const ambientCircuitLayer = createAmbientCircuitLayer(enemyTheme);
   scene.add(ambientCircuitLayer.group);
-  const super90sEnvironment = super90sEnabled ? createSuper90sEnvironment(playerColor) : null;
-  const super90sStatus = {
-    enabled: Boolean(super90sEnvironment),
-    windows: super90sEnvironment?.group.children.length ?? 0
-  };
-  if (chessGlobal) chessGlobal.super90s = super90sStatus;
-  if (super90sEnvironment) scene.add(super90sEnvironment.group);
   const clock = new Clock();
   const ro = new ResizeObserver(() => {
     const rw = canvas.clientWidth;
@@ -49489,7 +49288,6 @@ function setupScene(canvas, enemyTheme = "goop", playerColor = "w", super90sEnab
       cellWaveEnvironment.setAudioReactivity(audioReactive?.level ?? 0, audioReactive?.pulse ?? 0);
       cellWaveEnvironment.tick(delta);
       ambientCircuitLayer.tick(delta);
-      super90sEnvironment?.tick(delta, audioReactive?.level ?? 0, audioReactive?.pulse ?? 0);
     },
     dispose() {
       ro.disconnect();
@@ -49497,8 +49295,6 @@ function setupScene(canvas, enemyTheme = "goop", playerColor = "w", super90sEnab
       cellWaveEnvironment.dispose();
       if (chessGlobal?.cellWaveDev?.setParams === applyCellWaveDevControls) delete chessGlobal.cellWaveDev;
       ambientCircuitLayer.dispose();
-      super90sEnvironment?.dispose();
-      if (chessGlobal?.super90s === super90sStatus) delete chessGlobal.super90s;
       composer.renderTarget1.dispose();
       composer.renderTarget2.dispose();
       renderer.dispose();
@@ -57888,7 +57684,7 @@ function animateJump(instance, toSquare, effectsGroup, onComplete) {
 
 // src/board3d/useBoard3D.ts
 var START_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
-function useBoard3D(whiteName, blackName, onGameStateChange, inputEnabled = true, enemyTheme = "goop", playerColor = "w", onMoveStart, super90sEnabled = false, onSetupError) {
+function useBoard3D(whiteName, blackName, onGameStateChange, inputEnabled = true, enemyTheme = "goop", playerColor = "w", onMoveStart, onSetupError) {
   const canvasRef = (0, import_react.useRef)(null);
   const gameStateCallbackRef = (0, import_react.useRef)(onGameStateChange);
   const inputEnabledRef = (0, import_react.useRef)(inputEnabled);
@@ -57911,7 +57707,7 @@ function useBoard3D(whiteName, blackName, onGameStateChange, inputEnabled = true
     if (!canvas) return;
     let ctx;
     try {
-      ctx = setupScene(canvas, enemyTheme, playerColor, super90sEnabled);
+      ctx = setupScene(canvas, enemyTheme, playerColor);
     } catch (error2) {
       const reason = error2 instanceof Error ? error2.message : "webgl-renderer-failed";
       console.warn("[Board3D] Falling back to the 2D board.", error2);
@@ -58276,15 +58072,30 @@ function useBoard3D(whiteName, blackName, onGameStateChange, inputEnabled = true
         whiteSide: "rank-1",
         blackSide: "rank-8"
       };
+      const squareToClient = (square) => {
+        if (!/^[a-h][1-8]$/.test(square)) return null;
+        const { x, z } = squareToXZ(square);
+        const rect = canvas.getBoundingClientRect();
+        const projected = new Vector3(x, 0, z).project(ctx.camera);
+        return {
+          x: rect.left + (projected.x + 1) * rect.width / 2,
+          y: rect.top + (-projected.y + 1) * rect.height / 2
+        };
+      };
       boardDebugApi = {
-        squareToClient(square) {
+        squareToClient,
+        pieceAt(square) {
           if (!/^[a-h][1-8]$/.test(square)) return null;
-          const { x, z } = squareToXZ(square);
-          const rect = canvas.getBoundingClientRect();
-          const projected = new Vector3(x, 0, z).project(ctx.camera);
+          const piece = logicalChess.get(square);
+          const inst = pieceMap.get(square);
+          if (!piece || !inst) return null;
           return {
-            x: rect.left + (projected.x + 1) * rect.width / 2,
-            y: rect.top + (-projected.y + 1) * rect.height / 2
+            square,
+            type: piece.type,
+            color: piece.color,
+            x: inst.group.position.x,
+            z: inst.group.position.z,
+            client: squareToClient(square)
           };
         }
       };
@@ -58629,12 +58440,12 @@ function getWebGLBlockReason() {
   }
 }
 var Board3DScene = (0, import_react3.forwardRef)(
-  ({ whiteName = "White AI", blackName = "Black AI", inputEnabled = true, enemyTheme = "goop", playerColor = "w", super90sEnabled = false, onGameStateChange, onMoveStart }, ref) => {
+  ({ whiteName = "White AI", blackName = "Black AI", inputEnabled = true, enemyTheme = "goop", playerColor = "w", onGameStateChange, onMoveStart }, ref) => {
     const webglBlockReason = (0, import_react3.useMemo)(() => getWebGLBlockReason(), []);
     const [setupError, setSetupError] = (0, import_react3.useState)("");
     const fallbackReason = setupError || webglBlockReason;
     const fallbackRef = (0, import_react3.useRef)(null);
-    const { canvasRef, handleRef } = useBoard3D(whiteName, blackName, onGameStateChange, inputEnabled, enemyTheme, playerColor, onMoveStart, super90sEnabled, setSetupError);
+    const { canvasRef, handleRef } = useBoard3D(whiteName, blackName, onGameStateChange, inputEnabled, enemyTheme, playerColor, onMoveStart, setSetupError);
     (0, import_react3.useImperativeHandle)(ref, () => ({
       applyMove: (...args) => (fallbackReason ? fallbackRef.current : handleRef.current)?.applyMove(...args),
       resetToPosition: (fen) => (fallbackReason ? fallbackRef.current : handleRef.current)?.resetToPosition(fen),
@@ -58830,7 +58641,6 @@ var LEADERBOARD_KEY = "cyberChessLeaderboardV1";
 var AUDIO_MODE_KEY = "cyberChessAudioMode";
 var AUDIO_VOLUME_KEY = "cyberChessAudioVolume";
 var SAVE_GAME_KEY = "cyberChessSaveGameV1";
-var SUPER_90S_KEY = "cyberChessSuper90s";
 var MAX_LEADERBOARD = 8;
 var CELLWAVE_DEV_CONTROL_DEFS = [
   { key: "baseBrightness", label: "Brightness", min: 0, max: 2, step: 0.01 },
@@ -59242,13 +59052,6 @@ function readStoredAudioVolume() {
     return 100;
   }
 }
-function readStoredSuper90s() {
-  try {
-    return window.localStorage.getItem(SUPER_90S_KEY) === "1";
-  } catch (_) {
-    return false;
-  }
-}
 function readLeaderboard() {
   try {
     const parsed = JSON.parse(window.localStorage.getItem(LEADERBOARD_KEY) || "[]");
@@ -59422,7 +59225,6 @@ function App() {
   const lastAnnouncedRef = (0, import_react4.useRef)("");
   const audioModeRef = (0, import_react4.useRef)(readStoredAudioMode());
   const audioVolumeRef = (0, import_react4.useRef)(readStoredAudioVolume());
-  const super90sRef = (0, import_react4.useRef)(readStoredSuper90s());
   const previousFenRef = (0, import_react4.useRef)(START);
   const previousContinueSecondsRef = (0, import_react4.useRef)(CONTINUE_SECONDS);
   const lastCornerTapRef = (0, import_react4.useRef)(0);
@@ -59437,7 +59239,6 @@ function App() {
   const [settingsOpen, setSettingsOpen] = (0, import_react4.useState)(false);
   const [audioMode, setAudioMode] = (0, import_react4.useState)(audioModeRef.current);
   const [audioVolume, setAudioVolume] = (0, import_react4.useState)(audioVolumeRef.current);
-  const [super90s, setSuper90s] = (0, import_react4.useState)(super90sRef.current);
   const [soundtrackIndex, setSoundtrackIndex] = (0, import_react4.useState)(loadingMusicIndexRef.current);
   const [introVideoReady, setIntroVideoReady] = (0, import_react4.useState)(false);
   const [introVideoStarted, setIntroVideoStarted] = (0, import_react4.useState)(false);
@@ -59470,15 +59271,6 @@ function App() {
   const enemyAvatarSrc = fightHud.enemyMood === "damaged" ? selected.avatarStates.damaged : fightHud.enemyMood === "dominating" ? selected.avatarStates.dominating : selected.avatar;
   const soundtrackTitle = getSoundtrackTitle(SOUNDTRACK_SOURCES[soundtrackIndex]);
   const musicControlsDisabled = audioMode !== "full";
-  const updateSuper90s = (enabled) => {
-    super90sRef.current = enabled;
-    setSuper90s(enabled);
-    try {
-      window.localStorage.setItem(SUPER_90S_KEY, enabled ? "1" : "0");
-    } catch (_) {
-    }
-    ensureAudioEngine()?.play(enabled ? "reveal" : "tick");
-  };
   const updateGameState = (state) => {
     window.__chess.state = state;
     if (turnFromFen(state.fen) !== aiColor) {
@@ -59770,7 +59562,6 @@ function App() {
       leaderboard,
       audioMode,
       audioVolume,
-      super90s,
       settingsOpen,
       audioReady: Boolean(audioRef.current),
       soundtrackIndex,
@@ -59802,7 +59593,7 @@ function App() {
       audioRef.current?.play(forcedResult.kind === "game-over" ? "loss" : "tick");
       setScreen("result");
     };
-  }, [audioMode, audioVolume, blackName, continueSeconds, leaderboard, lives, nextOpponent, playerName, resultState, screen, selected, selectedId, settingsOpen, soundtrackIndex, super90s, whiteName]);
+  }, [audioMode, audioVolume, blackName, continueSeconds, leaderboard, lives, nextOpponent, playerName, resultState, screen, selected, selectedId, settingsOpen, soundtrackIndex, whiteName]);
   (0, import_react4.useEffect)(() => {
     if (screen === "intro" && menuStep === "profile") setPlayerNameInput("");
   }, [menuStep, screen]);
@@ -60446,13 +60237,12 @@ function App() {
         inputEnabled,
         enemyTheme: selected.theme,
         playerColor,
-        super90sEnabled: super90s,
         onGameStateChange: updateGameState,
         onMoveStart: () => {
           playClip(PIECE_SLIDE_SFX_SRC);
         }
       },
-      `${selected.id}-${playerColor}-${playerName}-${super90s ? "super90s" : "standard"}`
+      `${selected.id}-${playerColor}-${playerName}`
     ),
     window.cyberChessDesktop && /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)(import_jsx_runtime3.Fragment, { children: [
       /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { className: "electron-drag-tag", title: "Drag window", children: /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(
@@ -60806,22 +60596,6 @@ function App() {
                 )
               }
             )
-          ] }),
-          /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { className: "settings-group settings-visual-group", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("strong", { children: "VISUALS" }),
-            /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { className: "settings-options settings-options-visual", role: "group", "aria-label": "Visual effects", children: /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)(
-              "button",
-              {
-                type: "button",
-                className: "settings-toggle settings-visual-toggle" + (super90s ? " selected" : ""),
-                "aria-pressed": super90s,
-                onClick: () => updateSuper90s(!super90s),
-                children: [
-                  /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("span", { className: "settings-toggle-switch", "aria-hidden": "true" }),
-                  /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("span", { className: "settings-toggle-label", children: "SUPER 90S" })
-                ]
-              }
-            ) })
           ] }),
           /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { className: "settings-group settings-playlist", children: [
             /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("strong", { children: "SOUNDTRACK" }),

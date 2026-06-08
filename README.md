@@ -1,4 +1,4 @@
-# Codex Cyber Chess 0.7
+# Codex Cyber Chess 0.9
 
 <p align="center">
  <img width="1672" height="941" alt="readme_hero_shot" src="https://github.com/user-attachments/assets/69251c15-25bc-49c3-8086-34437878199a" />
@@ -7,15 +7,15 @@
 
 ## Playable Windows Build
 
-`Cyber_Chess_0.7/` is the ready-to-run Electron game folder.
+`Cyber_Chess_0.9/` is the ready-to-run Electron game folder.
 
 Run:
 
 ```text
-Cyber_Chess_0.7/Codex_Cyber_Chess_0.7.exe
+Cyber_Chess_0.9/Codex_Cyber_Chess_0.9.exe
 ```
 
-This is a playable `.exe` desktop build of **Cyber Chess 0.7** with the soundtrack bundled into the app resources.
+This is a playable `.exe` desktop build of **Cyber Chess 0.9** with the soundtrack bundled into the app resources.
 
 
 ```text
@@ -48,8 +48,8 @@ This is a playable `.exe` desktop build of **Cyber Chess 0.7** with the soundtra
 The in-game soundtrack is included in:
 
 ```text
-Cyber_Chess_0.7/resources/app/app/media/audio/
-Cyber_Chess_0.7/resources/app/app/media/bonus/
+Cyber_Chess_0.9/resources/app/app/media/audio/
+Cyber_Chess_0.9/resources/app/app/media/bonus/
 ```
 
 Current in-game playlist: **25 songs**.
