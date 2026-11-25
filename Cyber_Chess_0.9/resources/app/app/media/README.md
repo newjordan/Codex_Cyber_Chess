@@ -1,7 +1,7 @@
 # Media Notes
 
-This folder contains the static art, audio, UI, font, and engine assets used by the browser build.
+This folder contains the static art, audio, UI, font, and engine assets used by the game.
 
-Runtime paths are relative to the repository root. The game expects `index.html`, `app.js`, `media/`, `avatars/`, and `pieces_fbx/` to be served from the same base URL.
+Serve `index.html` together with `app.js`, `lib/`, `media/`, `avatars/`, and `pieces_fbx/` from the same base URL. From the repository root that directory is `Cyber_Chess_0.9/resources/app/app/`.
 
-Asset notices live in `../ATTRIBUTIONS.md`.
+The in-game jukebox list is `media/audio/TRACKLIST.txt`. Lozza's license is `media/engines/lozza-LICENSE.txt`.

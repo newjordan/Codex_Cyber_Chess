@@ -1,3 +1,15 @@
+import {
+  clampAudioVolume,
+  classifyGameEnd,
+  createAi,
+  expireLossResult,
+  getFightHudState,
+  livesAfterOutcome,
+  resultKindForOutcome,
+  sanitizePlayerName,
+  scoreRun,
+  soundtrackTitle as getSoundtrackTitle,
+} from "./lib/chess-rules.js";
 var __create = Object.create;
 var __defProp = Object.defineProperty;
 var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
@@ -58314,9 +58326,18 @@ var Board2DFallback = (0, import_react2.forwardRef)(
         selectedSquare: nextSelected
       });
     };
-    const commitMove = (from, to, promotion = "q") => {
+    const commitMove = (from, to, promotion) => {
       const nextGame = new Chess(fen);
-      const move = nextGame.move({ from, to, promotion });
+      const piece = nextGame.get(from);
+      const spec = { from, to };
+      if (promotion) spec.promotion = promotion;
+      else if (piece?.type === "p" && (to[1] === "1" || to[1] === "8")) spec.promotion = "q";
+      let move;
+      try {
+        move = nextGame.move(spec);
+      } catch (_) {
+        return false;
+      }
       if (!move) return false;
       onMoveStart?.(Boolean(move.captured) || move.flags.includes("c") || move.flags.includes("e"));
       setFen(nextGame.fen());
@@ -58328,7 +58349,7 @@ var Board2DFallback = (0, import_react2.forwardRef)(
     };
     (0, import_react2.useImperativeHandle)(ref, () => ({
       applyMove(from, to, _isCapture, _flags, promotion) {
-        commitMove(from, to, promotion ?? "q");
+        commitMove(from, to, promotion);
       },
       resetToPosition(nextFen) {
         const nextGame = new Chess(nextFen);
@@ -58369,8 +58390,10 @@ var Board2DFallback = (0, import_react2.forwardRef)(
         const piece = game.get(square);
         const selected = selectedSquare === square;
         const legal = legalTargets.has(square);
-        const dark = (files.indexOf(file2) + ranks.indexOf(rank2)) % 2 === 1;
-        return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+        const showFile = rank2 === ranks[ranks.length - 1];
+        const showRank = file2 === files[0];
+        const dark = (file2.charCodeAt(0) - 97 + Number(rank2)) % 2 === 1;
+        return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
           "button",
           {
             type: "button",
@@ -58381,9 +58404,13 @@ var Board2DFallback = (0, import_react2.forwardRef)(
               legal ? "is-legal" : "",
               flashSquare === square ? "is-flashing" : ""
             ].filter(Boolean).join(" "),
-            "aria-label": `${square}${piece ? ` ${piece.color === "w" ? "white" : "black"} ${piece.type}` : ""}`,
+            "aria-label": `${square}${piece ? ` ${piece.color === "w" ? "white" : "black"} ${piece.type}` : " empty"}`,
             onClick: () => selectSquare(square),
-            children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: piece ? PIECES[`${piece.color}${piece.type}`] : "" })
+            children: [
+              showRank ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "board2d-coord rank", children: String(rank2) }) : null,
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: piece ? `piece piece-${piece.color}` : "piece", children: piece ? PIECES[`${piece.color}${piece.type}`] : "" }),
+              showFile ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "board2d-coord file", children: file2 }) : null
+            ]
           },
           square
         );
@@ -58406,7 +58433,7 @@ function getWebGLBlockReason() {
   }
 }
 var Board3DScene = (0, import_react3.forwardRef)(
-  ({ whiteName = "White AI", blackName = "Black AI", inputEnabled = true, enemyTheme = "goop", playerColor = "w", onGameStateChange, onMoveStart }, ref) => {
+  ({ whiteName = "White AI", blackName = "Black AI", inputEnabled = true, enemyTheme = "goop", playerColor = "w", fen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", onGameStateChange, onMoveStart }, ref) => {
     const webglBlockReason = (0, import_react3.useMemo)(() => getWebGLBlockReason(), []);
     const [setupError, setSetupError] = (0, import_react3.useState)("");
     const fallbackReason = setupError || webglBlockReason;
@@ -58425,7 +58452,7 @@ var Board3DScene = (0, import_react3.forwardRef)(
         Board2DFallback,
         {
           ref: fallbackRef,
-          initialFen: "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+          initialFen: fen,
           playerColor,
           inputEnabled,
           onGameStateChange,
@@ -58449,152 +58476,9 @@ var Board3DScene = (0, import_react3.forwardRef)(
 Board3DScene.displayName = "Board3DScene";
 
 // src/ai.ts
-var PIECE_VALUE = {
-  p: 100,
-  n: 320,
-  b: 330,
-  r: 500,
-  q: 900,
-  k: 0
-};
-function legalMoves(game) {
-  return game.moves({ verbose: true });
-}
-function sample(items) {
-  if (!items.length) return null;
-  return items[Math.floor(Math.random() * items.length)];
-}
-function materialScore(game, perspective) {
-  let score = 0;
-  for (const row of game.board()) {
-    for (const piece of row) {
-      if (!piece) continue;
-      const value = PIECE_VALUE[piece.type] ?? 0;
-      score += piece.color === perspective ? value : -value;
-    }
-  }
-  return score;
-}
-function moveScore(game, move, perspective, depthBonus = 0) {
-  let score = 0;
-  if (move.captured) score += (PIECE_VALUE[move.captured] ?? 0) + 8;
-  if (move.promotion) score += PIECE_VALUE[move.promotion] ?? 700;
-  if (move.flags.includes("k") || move.flags.includes("q")) score += 18;
-  const clone = new Chess(game.fen());
-  clone.move({ from: move.from, to: move.to, promotion: move.promotion ?? "q" });
-  if (clone.isCheckmate()) score += 1e5;
-  else if (clone.isCheck()) score += 55;
-  score += materialScore(clone, perspective) * depthBonus;
-  return score;
-}
-function chooseEasy(game) {
-  const moves = legalMoves(game);
-  const captures = moves.filter((move) => move.captured);
-  if (captures.length && Math.random() < 0.35) return sample(captures);
-  return sample(moves);
-}
-function chooseMedium(game, perspective) {
-  const moves = legalMoves(game);
-  if (!moves.length) return null;
-  const scored = moves.map((move) => ({ move, score: moveScore(game, move, perspective, 0.02) + Math.random() * 36 })).sort((a, b) => b.score - a.score);
-  const pool = scored.slice(0, Math.min(3, scored.length));
-  return sample(pool.map((entry) => entry.move));
-}
-function minimax(game, depth, alpha, beta, perspective) {
-  if (game.isCheckmate()) return game.turn() === perspective ? -1e5 : 1e5;
-  if (game.isDraw() || game.isStalemate() || depth === 0) return materialScore(game, perspective);
-  const maximizing = game.turn() === perspective;
-  const moves = legalMoves(game).map((move) => ({ move, score: moveScore(game, move, perspective, 0) })).sort((a, b) => maximizing ? b.score - a.score : a.score - b.score).map((entry) => entry.move);
-  if (maximizing) {
-    let best2 = -Infinity;
-    for (const move of moves) {
-      game.move({ from: move.from, to: move.to, promotion: move.promotion ?? "q" });
-      best2 = Math.max(best2, minimax(game, depth - 1, alpha, beta, perspective));
-      game.undo();
-      alpha = Math.max(alpha, best2);
-      if (beta <= alpha) break;
-    }
-    return best2;
-  }
-  let best = Infinity;
-  for (const move of moves) {
-    game.move({ from: move.from, to: move.to, promotion: move.promotion ?? "q" });
-    best = Math.min(best, minimax(game, depth - 1, alpha, beta, perspective));
-    game.undo();
-    beta = Math.min(beta, best);
-    if (beta <= alpha) break;
-  }
-  return best;
-}
-function chooseHard(game, perspective) {
-  const moves = legalMoves(game);
-  if (!moves.length) return null;
-  let bestScore = -Infinity;
-  const bestMoves = [];
-  for (const move of moves) {
-    game.move({ from: move.from, to: move.to, promotion: move.promotion ?? "q" });
-    const score = minimax(game, 2, -Infinity, Infinity, perspective);
-    game.undo();
-    const total = score + moveScore(game, move, perspective, 0) * 0.1 + Math.random() * 8;
-    if (total > bestScore + 1e-3) {
-      bestScore = total;
-      bestMoves.length = 0;
-      bestMoves.push(move);
-    } else if (Math.abs(total - bestScore) <= 1e-3) {
-      bestMoves.push(move);
-    }
-  }
-  return sample(bestMoves);
-}
-function moveFromUci(game, uci) {
-  if (!/^[a-h][1-8][a-h][1-8][qrbn]?$/i.test(uci)) return null;
-  const from = uci.slice(0, 2);
-  const to = uci.slice(2, 4);
-  const promotion = uci[4]?.toLowerCase();
-  return legalMoves(game).find((move) => {
-    if (move.from !== from || move.to !== to) return false;
-    return !promotion || move.promotion === promotion;
-  }) ?? null;
-}
-function chooseLozza(fen, aiColor) {
-  const game = new Chess(fen);
-  if (game.isGameOver() || game.turn() !== aiColor) return Promise.resolve(null);
-  const fallback = () => chooseHard(new Chess(fen), aiColor);
-  if (typeof Worker === "undefined") return Promise.resolve(fallback());
-  return new Promise((resolve) => {
-    let worker = null;
-    let settled = false;
-    const finish = (move) => {
-      if (settled) return;
-      settled = true;
-      if (worker) worker.terminate();
-      resolve(move ?? fallback());
-    };
-    try {
-      worker = new Worker("media/engines/lozza.js");
-      worker.onmessage = (event) => {
-        const line = String(event.data).trim();
-        const match = /^bestmove\s+(\S+)/i.exec(line);
-        if (match) finish(moveFromUci(game, match[1]));
-      };
-      worker.onerror = () => finish(null);
-      worker.postMessage("uci");
-      worker.postMessage("isready");
-      worker.postMessage(`position fen ${fen}`);
-      worker.postMessage("go depth 5");
-      window.setTimeout(() => finish(null), 5e3);
-    } catch (_) {
-      finish(null);
-    }
-  });
-}
-async function chooseAiMove(fen, profile, aiColor = "b") {
-  const game = new Chess(fen);
-  if (game.isGameOver() || game.turn() !== aiColor) return null;
-  if (profile === "goop") return chooseEasy(game);
-  if (profile === "frostd4d") return chooseMedium(game, aiColor);
-  if (profile === "gordo") return chooseLozza(fen, aiColor);
-  return chooseHard(game, aiColor);
+const aiApi = createAi(Chess);
+function chooseAiMove(fen, profile, aiColor = "b") {
+  return aiApi.chooseAiMove(fen, profile, aiColor);
 }
 
 // src/main.tsx
@@ -58860,6 +58744,7 @@ function getResultBackdrop(result) {
   const set = RESULT_BACKDROPS[result.opponent.id];
   if (result.kind === "win") return set.win;
   if (result.kind === "loss") return set.loss;
+  if (result.kind === "draw") return result.opponent.hero;
   return set.gameOver;
 }
 function getResultPresentation(result, playerName) {
@@ -58875,6 +58760,14 @@ Thanks for Playing
 Game Created by Frosty40 and Codex`,
       badge: `${lines.trophy} / ${livesText.toUpperCase()} LEFT`,
       status: "THE PRIME STILL HIDES"
+    };
+  }
+  if (result.kind === "draw") {
+    return {
+      title: "BOARD DRAWN",
+      body: `${playerName} and ${result.opponent.name} split the position. No life was spent. Replay the same board.`,
+      badge: "DRAW / LIVES HELD",
+      status: "POSITION DRAWN"
     };
   }
   if (result.kind === "win") {
@@ -58903,80 +58796,12 @@ Game Created by Frosty40 and Codex`,
 function normalizeSoundtrackIndex(index) {
   return (index % SOUNDTRACK_SOURCES.length + SOUNDTRACK_SOURCES.length) % SOUNDTRACK_SOURCES.length;
 }
-function getSoundtrackTitle(src) {
-  const fileName = src.split("/").pop()?.replace(/\.[^.]+$/, "") ?? src;
-  return fileName.split(/[_-]+/).filter(Boolean).map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase()).join(" ");
-}
 function turnFromFen(fen) {
   try {
     return new Chess(fen).turn();
   } catch (_) {
     return "w";
   }
-}
-function clampPercent(value) {
-  return Math.max(0, Math.min(100, Math.round(value)));
-}
-function getWhiteMaterialScore(fen) {
-  const values = {
-    p: 1,
-    n: 3,
-    b: 3,
-    r: 5,
-    q: 9
-  };
-  const board = fen.split(" ")[0] || "";
-  let score = 0;
-  for (const char of board) {
-    const lower = char.toLowerCase();
-    const value = values[lower] ?? 0;
-    if (!value) continue;
-    score += char === lower ? -value : value;
-  }
-  return score;
-}
-function getPieceCounts(fen) {
-  const board = fen.split(" ")[0] || "";
-  let white = 0;
-  let black = 0;
-  for (const char of board) {
-    if (char >= "A" && char <= "Z") white += 1;
-    else if (char >= "a" && char <= "z") black += 1;
-  }
-  return { white, black };
-}
-function getFightHudState(fen, playerColor, aiColor) {
-  const playerAdvantage = (playerColor === "w" ? 1 : -1) * getWhiteMaterialScore(fen);
-  let playerInCheck = false;
-  let enemyInCheck = false;
-  try {
-    const game = new Chess(fen);
-    if (game.isCheck()) {
-      playerInCheck = game.turn() === playerColor;
-      enemyInCheck = game.turn() === aiColor;
-    }
-  } catch (_) {
-  }
-  const pieceCounts = getPieceCounts(fen);
-  const playerPieces = playerColor === "w" ? pieceCounts.white : pieceCounts.black;
-  const enemyPieces = aiColor === "w" ? pieceCounts.white : pieceCounts.black;
-  const playerHealth = clampPercent(playerPieces / 16 * 100);
-  const enemyHealth = clampPercent(enemyPieces / 16 * 100);
-  const playerMood = playerHealth <= 68 ? "damaged" : enemyHealth <= 58 ? "dominating" : "normal";
-  const enemyMood = enemyHealth <= 68 ? "damaged" : playerHealth <= 58 ? "dominating" : "neutral";
-  return {
-    playerAdvantage,
-    playerHealth,
-    enemyHealth,
-    playerMood,
-    enemyMood,
-    pressure: playerInCheck ? "CHECK DANGER" : enemyInCheck ? "CHECK PRESSURE" : playerAdvantage >= 4 ? "ADVANTAGE" : playerAdvantage <= -4 ? "DANGER" : "EVEN FIGHT"
-  };
-}
-function sanitizePlayerName(value) {
-  const compact = value.replace(/\s+/g, " ").trim();
-  const safe = compact.replace(/[^a-zA-Z0-9 _.-]/g, "").slice(0, 14).trim();
-  return safe || "PLAYER 1";
 }
 function isGordoDebugName(value) {
   const normalized = value.replace(/\s+/g, " ").trim().toLowerCase();
@@ -58996,10 +58821,6 @@ function readStoredAudioMode() {
   } catch (_) {
     return "full";
   }
-}
-function clampAudioVolume(value) {
-  if (!Number.isFinite(value)) return 100;
-  return Math.max(0, Math.min(200, Math.round(value)));
 }
 function readStoredAudioVolume() {
   try {
@@ -59204,7 +59025,7 @@ function App() {
   const inputEnabled = screen === "playing" && turn === playerColor && !thinking;
   const whiteName = playerColor === "w" ? playerName : selected.name;
   const blackName = playerColor === "b" ? playerName : selected.name;
-  const fightHud = getFightHudState(gameState.fen, playerColor, aiColor);
+  const fightHud = getFightHudState(gameState.fen, playerColor, aiColor, Chess);
   const currentStory = INTRO_STORY[storyIndex];
   const currentStoryBody = currentStory.body.replaceAll("{playerName}", playerName);
   const storyTextDuration = Math.max(3.4, Math.min(7.2, currentStoryBody.length * 0.052));
@@ -59220,28 +59041,29 @@ function App() {
     setGameState(state);
   };
   const buildResultForFen = (fen) => {
-    const game = new Chess(fen);
-    if (!game.isGameOver()) return null;
-    if (game.isCheckmate()) {
-      const winner = game.turn() === "w" ? "b" : "w";
-      if (winner === playerColor) {
-        return {
-          kind: nextOpponent ? "win" : "clear",
-          opponent: selected,
-          nextOpponent,
-          livesAfter: lives
-        };
-      }
-      const livesAfter2 = Math.max(0, lives - 1);
+    let game;
+    try {
+      game = new Chess(fen);
+    } catch (_) {
+      return null;
+    }
+    const outcome = classifyGameEnd(game, playerColor);
+    if (!outcome) return null;
+    const livesAfter = livesAfterOutcome(outcome, lives);
+    const kind = resultKindForOutcome(outcome, {
+      lives,
+      hasNextOpponent: Boolean(nextOpponent)
+    });
+    if (outcome === "win") {
       return {
-        kind: livesAfter2 > 0 ? "loss" : "game-over",
+        kind,
         opponent: selected,
-        livesAfter: livesAfter2
+        nextOpponent,
+        livesAfter
       };
     }
-    const livesAfter = Math.max(0, lives - 1);
     return {
-      kind: livesAfter > 0 ? "loss" : "game-over",
+      kind,
       opponent: selected,
       livesAfter
     };
@@ -59253,8 +59075,14 @@ function App() {
     recordedResultKeyRef.current = resultKey;
     const seconds = Math.max(1, Math.round((Date.now() - runStartedAtRef.current) / 1e3));
     const wins = result.kind === "clear" ? OPPONENTS.length : Math.max(0, selectedIndex);
-    const speedBonus = result.kind === "clear" ? Math.max(0, 900 - seconds) : 0;
-    const score = wins * 1e3 + result.livesAfter * 250 + speedBonus;
+    const score = scoreRun({
+      outcome: result.kind,
+      opponentIndex: selectedIndex,
+      livesAfter: result.livesAfter,
+      seconds,
+      opponentCount: OPPONENTS.length
+    });
+    if (score == null) return;
     const entry = {
       id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
       name: playerName,
@@ -59360,7 +59188,12 @@ function App() {
     const requestId = aiRequestRef.current + 1;
     aiRequestRef.current = requestId;
     const id = window.setTimeout(async () => {
-      const move = await chooseAiMove(gameState.fen, selected.id, aiColor);
+      let move = null;
+      try {
+        move = await chooseAiMove(gameState.fen, selected.id, aiColor);
+      } catch (_) {
+        move = null;
+      }
       if (requestId !== aiRequestRef.current || screen !== "playing") return;
       if (!move) {
         aiBusyRef.current = false;
@@ -59396,6 +59229,8 @@ function App() {
     const isCheckmate = new Chess(gameState.fen).isCheckmate();
     if (isCheckmate) {
       playClip(CHECKMATE_SFX_SRC);
+    } else if (result.kind === "draw") {
+      audioRef.current?.play("reveal");
     } else {
       audioRef.current?.play(result.kind === "win" || result.kind === "clear" ? "win" : "loss");
     }
@@ -59404,8 +59239,10 @@ function App() {
   (0, import_react4.useEffect)(() => {
     if (screen !== "result" || resultState?.kind !== "loss") return;
     if (continueSeconds <= 0) {
-      setResultState({ ...resultState, kind: "game-over", livesAfter: 0 });
+      const expired = expireLossResult(resultState);
+      setResultState(expired);
       setLives(0);
+      recordRun(expired);
       return;
     }
     const id = window.setTimeout(() => setContinueSeconds((current) => Math.max(0, current - 1)), 1e3);
@@ -59502,8 +59339,8 @@ function App() {
     };
   }, [audioMode, audioVolume, blackName, continueSeconds, leaderboard, lives, nextOpponent, playerName, resultState, screen, selected, selectedId, settingsOpen, soundtrackIndex, whiteName]);
   (0, import_react4.useEffect)(() => {
-    if (screen === "intro" && menuStep === "profile") setPlayerNameInput("");
-  }, [menuStep, screen]);
+    if (screen === "intro" && menuStep === "profile") setPlayerNameInput(playerName);
+  }, [menuStep, playerName, screen]);
   const resetGame = () => {
     aiBusyRef.current = false;
     aiRequestRef.current += 1;
@@ -59653,7 +59490,6 @@ function App() {
       clip.volume = baseVolume;
     }
     if (announcerRef.current) announcerRef.current.volume = mediaVolume(nextVolume);
-    if (audioModeRef.current !== "muted") audioRef.current?.play("tick");
   };
   const switchSoundtrackSong = (index) => {
     if (audioModeRef.current !== "full") return;
@@ -59994,6 +59830,11 @@ function App() {
     audioRef.current?.play("menu");
     startOpponentLoading();
   };
+  const replayAfterDraw = () => {
+    if (!resultState || resultState.kind !== "draw") return;
+    audioRef.current?.play("menu");
+    startOpponentLoading();
+  };
   const advanceAfterWin = () => {
     if (!resultState) return;
     if (resultState.kind === "clear") {
@@ -60144,6 +59985,7 @@ function App() {
         inputEnabled,
         enemyTheme: selected.theme,
         playerColor,
+        fen: gameState.fen,
         onGameStateChange: updateGameState,
         onMoveStart: () => {
           playClip(PIECE_SLIDE_SFX_SRC);
@@ -60175,7 +60017,7 @@ function App() {
         }
       )
     ] }),
-    !settingsOpen && screen === "intro" && menuStep === "video" && /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("button", { type: "button", className: "settings-launcher", "aria-label": "SETTINGS", onClick: () => {
+    !settingsOpen && (screen === "playing" || screen === "result" || screen === "intro" && menuStep === "video") && /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("button", { type: "button", className: "settings-launcher" + (screen === "intro" ? "" : " is-docked"), "aria-label": "Settings", onClick: () => {
       ensureAudioEngine()?.play("menu");
       setSettingsOpen(true);
     }, children: /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("span", { children: "SETTINGS" }) }),
@@ -60240,8 +60082,9 @@ function App() {
               {
                 id: "player-name",
                 value: playerNameInput,
-                maxLength: 24,
+                maxLength: 14,
                 autoComplete: "nickname",
+                placeholder: playerName,
                 onChange: (event) => setPlayerNameInput(event.currentTarget.value),
                 onKeyDown: (event) => {
                   if (event.key === "Enter") savePlayerProfile();
@@ -60258,7 +60101,6 @@ function App() {
         /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { className: "side-footer", children: [
           /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("button", { type: "button", className: "art-button art-button-back", onClick: () => {
             audioRef.current?.play("menu");
-            setStoryIndex(1);
             setMenuStep("story");
           }, children: /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("span", { children: "BACK" }) }),
           /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { className: "color-picker", role: "group", "aria-label": "Choose your color", children: [
@@ -60346,6 +60188,12 @@ function App() {
         )
       ] })
     ] }),
+    screen === "playing" && /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { className: "match-status", role: "status", "aria-live": "polite", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("span", { children: playerName }),
+      /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("span", { className: lives === 1 ? "lives-hot" : "", children: `LIVES ${lives}` }),
+      /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("strong", { children: gameState.status }),
+      /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("span", { children: thinking ? `${selected.name} THINKING` : selected.name })
+    ] }),
     screen === "result" && resultState && resultPresentation && /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { className: "result-screen result-screen-" + resultState.kind + " enemy-theme-" + resultState.opponent.theme, children: [
       /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(
         "img",
@@ -60382,7 +60230,7 @@ function App() {
         resultState.kind !== "clear" && /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { className: "result-enemy-card", children: [
           /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("img", { src: resultState.opponent.avatar, alt: "" }),
           /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { children: [
-            /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("span", { children: resultState.kind === "win" ? "DEFEATED ENEMY" : "ACTIVE THREAT" }),
+            /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("span", { children: resultState.kind === "win" ? "DEFEATED ENEMY" : resultState.kind === "draw" ? "DRAWN MATCH" : "ACTIVE THREAT" }),
             /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("strong", { children: resultState.opponent.name }),
             /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("em", { children: [
               resultState.opponent.difficulty,
@@ -60395,6 +60243,7 @@ function App() {
           resultState.kind === "win" && /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("button", { type: "button", className: "art-button art-button-continue result-primary", onClick: advanceAfterWin, children: /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("span", { children: "NEXT OPPONENT" }) }),
           resultState.kind === "clear" && /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("button", { type: "button", className: "art-button art-button-play result-primary", onClick: advanceAfterWin, children: /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("span", { children: "RUN IT BACK" }) }),
           resultState.kind === "loss" && /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("button", { type: "button", className: "art-button art-button-continue result-primary", onClick: continueAfterLoss, children: /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("span", { children: "CONTINUE" }) }),
+          resultState.kind === "draw" && /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("button", { type: "button", className: "art-button art-button-continue result-primary", onClick: replayAfterDraw, children: /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("span", { children: "REMATCH" }) }),
           resultState.kind === "game-over" && /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("button", { type: "button", className: "art-button art-button-play result-primary", onClick: restartCampaign, children: /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("span", { children: "NEW RUN" }) }),
           /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("button", { type: "button", className: "art-button art-button-back", onClick: openMenu, children: /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("span", { children: "MENU" }) })
         ] })
