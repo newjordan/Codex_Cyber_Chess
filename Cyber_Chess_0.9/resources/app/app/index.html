@@ -39,10 +39,12 @@
   .board2d-shell {
     position: fixed;
     inset: 0;
+    z-index: 2;
     display: grid;
-    place-items: center;
+    align-content: end;
+    justify-items: center;
     gap: 12px;
-    padding: clamp(12px, 3vw, 28px);
+    padding: 16px 16px 96px;
     background:
       repeating-linear-gradient(0deg, rgba(0, 0, 0, 0.34) 0 2px, rgba(0, 255, 204, 0.05) 2px 4px),
       radial-gradient(circle at center, rgba(0, 255, 204, 0.12), rgba(2, 5, 12, 0.96) 64%);
@@ -54,7 +56,7 @@
     align-items: center;
     justify-content: center;
     gap: 10px;
-    width: min(92vmin, 720px);
+    width: min(78vw, calc(100vh - 420px));
     min-height: 34px;
     color: #bffef8;
     text-shadow: 0 0 10px rgba(0, 255, 204, 0.7);
@@ -65,11 +67,12 @@
     color: #39ff14;
   }
   .board2d-grid {
-    align-self: start;
+    align-self: center;
     display: grid;
-    grid-template-columns: repeat(8, 1fr);
-    width: min(92vmin, 720px);
-    aspect-ratio: 1;
+    grid-template-columns: repeat(8, minmax(0, 1fr));
+    grid-template-rows: repeat(8, minmax(0, 1fr));
+    width: min(78vw, calc(100vh - 420px));
+    height: min(78vw, calc(100vh - 420px));
     border: 3px ridge #00ffcc;
     box-shadow: 0 0 0 3px #000, 0 0 34px rgba(0, 255, 204, 0.42);
     background: #02050c;
@@ -79,18 +82,43 @@
     display: grid;
     place-items: center;
     width: 100%;
-    aspect-ratio: 1;
+    height: 100%;
+    min-width: 0;
+    min-height: 0;
     padding: 0;
     border: 1px solid rgba(0, 0, 0, 0.55);
     color: #f6fffe;
     background: #07131c;
     cursor: pointer;
-    font: 900 clamp(22px, 7vmin, 58px) Georgia, "Times New Roman", serif;
+    font: 900 clamp(16px, 3.4vw, 40px) Georgia, "Times New Roman", serif;
     letter-spacing: 0;
     text-shadow: 0 2px 0 #000, 0 0 12px rgba(0, 255, 204, 0.55);
   }
-  .board2d-square span {
+  .board2d-square .piece {
     transform: translateY(-0.04em);
+  }
+  .board2d-square .piece-w {
+    color: #f7fff8;
+    text-shadow: 0 0 2px #04140f, 0 2px 0 #04140f, 0 0 10px rgba(4, 20, 15, 0.9);
+  }
+  .board2d-square .piece-b {
+    color: #140814;
+    text-shadow: 0 0 2px #fff6ff, 0 1px 0 #fff, 0 0 8px rgba(255, 236, 255, 0.95);
+  }
+  .board2d-coord {
+    position: absolute;
+    font: 700 10px/1 var(--font-label);
+    letter-spacing: 0;
+    pointer-events: none;
+    text-shadow: none;
+  }
+  .board2d-coord.rank { top: 3px; left: 4px; }
+  .board2d-coord.file { right: 4px; bottom: 3px; }
+  .board2d-light .board2d-coord { color: rgba(2, 28, 32, 0.78); }
+  .board2d-dark .board2d-coord { color: rgba(223, 255, 247, 0.78); }
+  .board2d-square:focus-visible {
+    outline: 3px solid #fff200;
+    outline-offset: -4px;
   }
   .board2d-light {
     background: linear-gradient(135deg, #1fd7c5, #1686be);
@@ -130,6 +158,7 @@
   .cyber-menu {
     position: fixed;
     inset: 0;
+    z-index: 8;
     display: grid;
     place-items: center;
     padding: 18px;
@@ -737,7 +766,7 @@
     margin: 0;
     max-height: calc(100vh - clamp(166px, 24vh, 216px));
     padding: clamp(13px, 2vw, 22px);
-    overflow: hidden;
+    overflow: auto;
     color: #dffcff;
     background: transparent;
     border: 0;
@@ -870,7 +899,7 @@
       filter: saturate(1.7) brightness(1.12);
     }
     100% {
-      max-height: 9em;
+      max-height: 18em;
       filter: none;
     }
   }
@@ -1334,7 +1363,7 @@
   }
   .settings-launcher {
     position: fixed;
-    right: clamp(10px, 1.8vw, 24px);
+    right: 48px;
     top: clamp(10px, 1.5vw, 20px);
     z-index: 12;
     width: clamp(112px, 12vw, 178px);
@@ -2628,12 +2657,81 @@
       0 0 4px var(--neon-cyan),
       0 0 10px var(--neon-blue);
   }
+  .settings-launcher.is-docked {
+    top: auto;
+    right: 16px;
+    bottom: 64px;
+    width: clamp(96px, 12vw, 140px);
+  }
+  .match-status {
+    position: fixed;
+    z-index: 14;
+    left: 50%;
+    bottom: 12px;
+    transform: translateX(-50%);
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    align-items: center;
+    gap: 8px 14px;
+    width: min(760px, calc(100vw - 180px));
+    padding: 8px 14px;
+    color: #dff;
+    background: rgba(2, 5, 12, 0.86);
+    border: 2px solid rgba(0, 255, 204, 0.72);
+    box-shadow: 0 0 18px rgba(0, 255, 204, 0.28);
+    font: 900 13px/1.2 var(--font-label);
+    letter-spacing: 0.06em;
+    pointer-events: none;
+  }
+  .match-status strong { color: #fff200; font: inherit; }
+  .match-status .lives-hot { color: #ff5c8c; }
+  .result-screen-draw .result-kicker { color: #7dffcc; }
+  .result-screen-draw .result-copy h1 { color: #7dffcc; }
+  .art-button:focus-visible,
+  .settings-launcher:focus-visible,
+  .cyber-start:focus-visible,
+  .settings-toggle:focus-visible {
+    outline: 2px solid #fff200;
+    outline-offset: 3px;
+  }
+  @media (max-width: 860px) {
+    .side-footer {
+      grid-template-columns: 1fr;
+      min-height: 0;
+      padding-bottom: 18px;
+    }
+    .board2d-shell { padding-bottom: 132px; }
+    .match-status {
+      left: 12px;
+      right: 12px;
+      bottom: 62px;
+      transform: none;
+      width: auto;
+    }
+    .settings-launcher.is-docked {
+      right: 10px;
+      bottom: 8px;
+      width: 96px;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .story-copy p,
+    .story-art-too-deep,
+    .menu-step-video.pan-started .cyber-start,
+    .menu-step-video.pan-started .cyber-start-art::before,
+    .credits-roll {
+      animation: none;
+    }
+    .story-copy p { max-height: none; }
+    .menu-step-video.pan-started .cyber-start { opacity: 1; }
+  }
 </style>
 </head>
 <body>
 <div id="root"></div>
 <div id="loading">booting cyber chess...</div>
 <!-- esbuild bundle of src/main.tsx -->
-<script type="module" src="./app.js?v=20260601-bootfix"></script>
+<script type="module" src="./app.js?v=20261125-quality"></script>
 </body>
 </html>
